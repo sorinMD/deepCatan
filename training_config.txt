@@ -1,0 +1,12 @@
+Path=./data/
+LearningRate=0.001
+MiniBatchSize=1
+Epochs=10
+LabelWeight=10
+MetricWeight=0
+DataType=human
+Task=0
+Samples=50000
+Normalisation=true
+PreTrainTask=1
+PreTrainEpochs=10
