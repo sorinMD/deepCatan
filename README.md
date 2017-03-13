@@ -28,6 +28,6 @@ Configuration is set in the training_config.txt file (the values given in the pr
 - Normalisation=true/false (0 mean and unit variance normalisation)
 - PreTrainEpochs=(number of epochs to pre-train when doing transfer learning) 
 
-Note: Extract the data archive that can be found in data folder and provide the path to the extracted data before running any of the experiments. The data is shuffled and grouped based on tasks. The format of the data is given in utils.NumericalFeatureVectorOffsets.java. Normalisation parameters (means and standard deviation) are already computed and stored in the corresponding folders.
+Note: Extract the data archive that can be found in data folder and provide the path to the extracted data before running any of the experiments. The data is shuffled and grouped based on tasks. Normalisation parameters (means and standard deviation) are also already computed and stored in the corresponding folders. The format of the data is given in utils.NumericalFeatureVectorOffsets.java. The code that used for generating/collecting the data will be released with the code for the STAC project (https://www.irit.fr/STAC/). 
 
 Python script plot.py can be used to plot and vizualise the results.
