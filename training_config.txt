@@ -10,3 +10,4 @@ Samples=50000
 Normalisation=true
 PreTrainTask=1
 PreTrainEpochs=10
+MaskHiddenFeatures=false

@@ -51,7 +51,7 @@ public class RandomTest {
         int actInputSize = Integer.parseInt(testScanner.nextLine().split(METADATA_SEPRATOR)[1]);
         int maxActions = Integer.parseInt(testScanner.nextLine().split(METADATA_SEPRATOR)[1]);
         testScanner.close();
-        CatanDataSetIterator testIter = new CatanDataSetIterator(testData,nSamples,1,numInputs+1,numInputs+actInputSize+1,true);
+        CatanDataSetIterator testIter = new CatanDataSetIterator(testData,nSamples,1,numInputs+1,numInputs+actInputSize+1,true,parser.getMaskHiddenFeatures());
         
         CatanEvaluation eval = new CatanEvaluation(maxActions);
         log.info("Evaluate model....");

@@ -1,6 +1,10 @@
 package test.catan.mlp;
 
+import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.Arrays;
 import java.util.Scanner;
 
 import org.apache.commons.io.FileUtils;
@@ -23,6 +27,7 @@ import data.CatanDataSetIterator;
 import data.Normaliser;
 import data.PreloadedCatanDataSetIterator;
 import model.CatanMlpConfig;
+import util.CatanFeatureMaskingUtil;
 import util.CrossValidationUtils;
 import util.DataUtils;
 import util.NNConfigParser;
@@ -82,13 +87,19 @@ public class CVMlpFullDataSetTest {
         //data iterators
         CatanDataSetIterator[] fullIter = new CatanDataSetIterator[nTasks];
         for(int i= 0; i < nTasks; i++){
-	        fullIter[i] = new CatanDataSetIterator(data[i],nSamples,miniBatchSize,numInputs+1,numInputs+actInputSize+1,true);
+	        fullIter[i] = new CatanDataSetIterator(data[i],nSamples,miniBatchSize,numInputs+1,numInputs+actInputSize+1,true,parser.getMaskHiddenFeatures());
         }
         
-        Normaliser norm = new Normaliser(PATH + DATA_TYPE);
+        Normaliser norm = new Normaliser(PATH + DATA_TYPE,parser.getMaskHiddenFeatures());
         if(NORMALISATION){
         	log.info("Check normalisation parameters for dataset ....");
         	norm.init(fullIter);
+        }
+        
+        //if the input is masked/postprocessed update the input size for the model creation
+        if(parser.getMaskHiddenFeatures()) {
+        	numInputs -= CatanFeatureMaskingUtil.droppedFeaturesCount;
+        	actInputSize -= CatanFeatureMaskingUtil.droppedFeaturesCount;
         }
         
         log.info("Initialise cross-validation for each task....");
@@ -98,7 +109,9 @@ public class CVMlpFullDataSetTest {
         }
         //NOTE: when training we iterate for each fold over each task, but we need to be able to pass the data for each task over each fold, hence this order
         CatanPlotter[][] plotter = new CatanPlotter[nTasks][FOLDS];
-        
+        double[] totalEvalAccuracy = new double[epochs];
+        Arrays.fill(totalEvalAccuracy, 0);
+                
         for(int k = 0; k < FOLDS; k++){
         	log.info("Starting fold " + k);
         	for(int i= 0; i < nTasks; i++){
@@ -133,6 +146,8 @@ public class CVMlpFullDataSetTest {
 		        	for(int j= 0; j < nTasks; j++){
 		        		if(!trainIter[j].hasNext())
 		        			continue;
+		        		if(j == 4 && parser.getMaskHiddenFeatures())//we can't train on discard task when the input is masked since there is no difference between the actions
+		        			continue;
 	            		CatanDataSet d = trainIter[j].next();
 	            		DataSet ds = DataUtils.turnToSAPairsDS(d,metricW,labelW);
 	                	if(NORMALISATION)
@@ -143,7 +158,11 @@ public class CVMlpFullDataSetTest {
 //	            log.info("*** Completed epoch {} ***", i);
 	            
 //	            log.info("Evaluate model....");
+	            double totalCorrect = 0;
+	            double totalSamples = 0;
 	            for(int j= 0; j < nTasks; j++){
+	        		if(j == 4 && parser.getMaskHiddenFeatures())//we can't evaluate on discard task when the input is masked since there is no difference between the actions
+	        			continue;
 //	            	log.info("Evaluate model on evaluation set for task " + j + "....");
 		            eval[j] = new CatanEvaluation(trainMaxActions[j]);
 		            agfe[j] = new ActionGuessFeaturesEvaluation(actInputSize-1);//get rid of the bias
@@ -159,7 +178,10 @@ public class CVMlpFullDataSetTest {
 		            testIter[j].reset();
 		            //once finished just output the result
 //		            System.out.println(eval[j].stats());
-		            
+		            //do the below across all tasks to average as in the standard approach
+		            totalCorrect += eval[j].correct();
+		            totalSamples += eval[j].getNumRowCounter();
+		            		            
 //		            log.info("Evaluate model on training set for task " + j + "....");
 		            tEval[j] = new CatanEvaluation(trainMaxActions[j]);
 		            tagfe[j] = new ActionGuessFeaturesEvaluation(actInputSize-1);//get rid of the bias
@@ -180,9 +202,12 @@ public class CVMlpFullDataSetTest {
 		            plotter[j][k].addRanks(tEval[j].getRank(), eval[j].getRank());
 		            plotter[j][k].addFeatureConfusion(agfe[j].getStats(), tagfe[j].getStats());
 	            }
+	            totalEvalAccuracy[i] += totalCorrect/totalSamples;
 	        }
             //write current results and move files so these won't be overwritten
             for(int j= 0; j < nTasks; j++){
+            	if(j == 4 && parser.getMaskHiddenFeatures())//there is nothing to write so we should avoid an exception
+        			continue;
 	            plotter[j][k].writeAll();
             }
             File dirFrom = new File(CatanPlotter.RESULTS_DIR);
@@ -196,9 +221,37 @@ public class CVMlpFullDataSetTest {
         }
         
     	for(int i= 0; i < nTasks; i++){
+    		if(i == 4 && parser.getMaskHiddenFeatures())
+    			continue;
     		cv[i].writeResults(plotter[i], i);
     	}
         
+    	//write the results for the total evaluation accuracy
+    	for(int i= 0; i < totalEvalAccuracy.length; i++){
+	        totalEvalAccuracy[i] /= FOLDS;
+    	}
+        
+		try {
+            File write = new File("TotalEvaluation.txt");
+			write.delete();
+			write.createNewFile();
+            BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(write,true));
+            StringBuilder sb = new StringBuilder();
+            for(Object value : totalEvalAccuracy) {
+                sb.append(String.format("%.10f", (Double) value));
+                sb.append(",");
+            }
+            String line = sb.toString();
+            line = line.substring(0, line.length()-1);
+            bos.write(line.getBytes());
+            bos.write(line.getBytes());
+            bos.flush();
+            bos.close();
+
+        } catch(IOException e){
+            throw new RuntimeException(e);
+        }
+     
     }  
 }
 

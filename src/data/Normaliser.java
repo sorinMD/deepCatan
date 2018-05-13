@@ -16,15 +16,26 @@ import org.nd4j.linalg.ops.transforms.Transforms;
 import util.DataUtils;
 import util.ModelUtils;
 
+/**
+ * Normaliser for the Catan data.
+ * 
+ * @author sorinMD
+ *
+ */
 public class Normaliser {
 
 	private boolean initialised = false;
 	private INDArray means = null;
 	private INDArray stds = null;
 	private String path = ModelUtils.PARAMS_PATH + "normalisation/"; //default, but should be updated via the constructor
+	private boolean maskedInput = false;
 	
-	public Normaliser(String path) {
-		this.path = path + "/normalisation/";
+	public Normaliser(String path, boolean maskedInput) {
+		this.maskedInput = maskedInput;
+		if(maskedInput)
+			this.path = path + "/normalisation/maskedInput/";
+		else
+			this.path = path + "/normalisation/";
 	}
 	
 	/**
@@ -46,7 +57,17 @@ public class Normaliser {
     	//make sure the directory structure exists
     	f.getParentFile().mkdirs();
     	
-        computeZeroMeanUnitVarianceParams(its, f);
+    	
+    	if(maskedInput) {
+    		//remove task 4 from normalisation since we cannot train on it 
+    		CatanDataSetIterator[] its2 = new CatanDataSetIterator[5];	
+    		for(int i = 0; i < 4; i++)
+    			its2[i] = its[i];
+    		its2[4] = its[5];
+    		computeZeroMeanUnitVarianceParams(its2, f);
+    	}else {
+    		computeZeroMeanUnitVarianceParams(its, f);
+    	}
 	}
 	
 	/**

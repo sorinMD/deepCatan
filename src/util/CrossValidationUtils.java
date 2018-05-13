@@ -103,6 +103,10 @@ public class CrossValidationUtils {
         }
     }
 	
+    public ArrayList<CatanDataSet> getFullData() {
+		return fullData;
+	}
+    
     public PreloadedCatanDataSetIterator getTrainIterator(){
     	return new PreloadedCatanDataSetIterator(trainData, iter.batch());
     }

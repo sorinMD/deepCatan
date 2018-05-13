@@ -23,6 +23,7 @@ import data.CatanDataSetIterator;
 import data.Normaliser;
 import data.PreloadedCatanDataSetIterator;
 import model.CatanMlpConfig;
+import util.CatanFeatureMaskingUtil;
 import util.CrossValidationUtils;
 import util.DataUtils;
 import util.NNConfigParser;
@@ -79,8 +80,8 @@ public class CVCatanMlpTest {
 	        long seed = 123;
 	       
 	        //full data iterator for data normalisation so we won't have to wait for every fold
-	        CatanDataSetIterator fullIter = new CatanDataSetIterator(data,nSamples,miniBatchSize,numInputs+1,numInputs+actInputSize+1,true);
-	        Normaliser norm = new Normaliser(PATH + DATA_TYPE);
+	        CatanDataSetIterator fullIter = new CatanDataSetIterator(data,nSamples,miniBatchSize,numInputs+1,numInputs+actInputSize+1,true,parser.getMaskHiddenFeatures());
+	        Normaliser norm = new Normaliser(PATH + DATA_TYPE,parser.getMaskHiddenFeatures());
 	        if(NORMALISATION){
 	        	log.info("Check normalisation parameters for dataset ....");
 	        	norm.init(fullIter, TASK);
@@ -89,6 +90,12 @@ public class CVCatanMlpTest {
 	        log.info("Initialise cross-validation....");
 	        CrossValidationUtils cv = new CrossValidationUtils(fullIter, FOLDS, nSamples);
 	        CatanPlotter[] plotter = new CatanPlotter[FOLDS];
+	        
+	        //if the input is masked/postprocessed update the input size for the model creation
+	        if(parser.getMaskHiddenFeatures()) {
+	        	numInputs -= CatanFeatureMaskingUtil.droppedFeaturesCount;
+	        	actInputSize -= CatanFeatureMaskingUtil.droppedFeaturesCount;
+	        }
 	        
 	        for(int k = 0; k < FOLDS; k++){
 	        	log.info("Starting fold " + k);

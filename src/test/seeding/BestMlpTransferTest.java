@@ -1,4 +1,4 @@
-package test.transfer;
+package test.seeding;
 
 import java.io.File;
 import java.util.Arrays;
@@ -18,6 +18,7 @@ import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.lossfunctions.LossFunctions.LossFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
 import data.CatanDataSet;
 import data.CatanDataSetIterator;
 import data.Normaliser;
@@ -30,19 +31,14 @@ import util.ModelUtils;
 import util.NNConfigParser;
 
 /**
- * Runs the transfer learning test, where the model is pre-trained on all but
- * the target task before it is fine-tuned on the target task.
+ * This the class used for training the best current model (trained on human data) that will be used for seeding into MCTS.
+ * It uses all the data for the task and the configuration is the one suggested by the previous results.
  * 
- * Best number of epochs for pre-training depending on the task are:
- * task 1 : 10
- * task 3 : 1
- * task 4 : 10
- * task 5 : 5
- * 
- * @author sorinMD
+ * @author MD
+ *
  */
-public class CVMlpTransferTest {
-	private static Logger log = LoggerFactory.getLogger(CVMlpTransferTest.class);
+public class BestMlpTransferTest {
+	private static Logger log = LoggerFactory.getLogger(BestMlpTransferTest.class);
 	private static final String METADATA_SEPARATOR = ":";
 	private static String PATH;
 	private static String DATA_TYPE;
@@ -53,17 +49,16 @@ public class CVMlpTransferTest {
 	/**
 	 * The number of epochs the system is trained on all the data from the tasks we are trying to transfer from
 	 */
-	private static int preEpochs = 10;
+	private static int preEpochs = 1;
 	
 	public static void main(String[] args) throws Exception {
-    	parser = new NNConfigParser(null);
+    	parser = new NNConfigParser(null);//TODO: add config file to resources and accept different ones via the args
     	DATA_TYPE = parser.getDataType();
     	DATA_TYPE = DATA_TYPE + "CV";
     	PATH = parser.getDataPath();
     	TASK = parser.getTask();
     	NORMALISATION = parser.getNormalisation();
     	preEpochs = parser.getPreTrainEpochs();
-    	int FOLDS = 10; //standard 10 fold validation
     	
     	//the features used are the same across the tasks so we just use the final ones, but we need to read them as they are present in all metadata files
     	int numInputs = 0;
@@ -105,16 +100,25 @@ public class CVMlpTransferTest {
 	        fullIter[i] = new CatanDataSetIterator(data[i],nSamples,miniBatchSize,numInputs+1,numInputs+actInputSize+1,true,parser.getMaskHiddenFeatures());
         }
         
+        //TODO: Should we normalise over the whole data or just on this particular task that we want to handle or just the 5 tasks?
         Normaliser norm = new Normaliser(PATH + DATA_TYPE,parser.getMaskHiddenFeatures());
         if(NORMALISATION){
         	log.info("Check normalisation parameters for dataset ....");
         	norm.init(fullIter);
         }
         
-        //if the input is masked/postprocessed update the input size for the model creation
+        //if the input is masked/postprocessed update the input size for the models creation
         if(parser.getMaskHiddenFeatures()) {
         	numInputs -= CatanFeatureMaskingUtil.droppedFeaturesCount;
         	actInputSize -= CatanFeatureMaskingUtil.droppedFeaturesCount;
+        }
+        
+        log.info("Pre-loading data to avoid the MemcpyAsync bug on GPU....");
+        CrossValidationUtils[] temp = new CrossValidationUtils[nTasks];
+        PreloadedCatanDataSetIterator[] preloadedIter = new PreloadedCatanDataSetIterator[nTasks];
+        for(int j = 0; j < nTasks; j++) {
+        	temp[j] = new CrossValidationUtils(fullIter[j], 10, nSamples);//only to get access to the full data
+        	preloadedIter[j] = new PreloadedCatanDataSetIterator(temp[j].getFullData(), miniBatchSize);
         }
         
         //train over all the data from the other tasks
@@ -132,33 +136,33 @@ public class CVMlpTransferTest {
         log.info("Pretrain model on data from the other tasks....");
         for( int i=0; i<preEpochs; i++ ) {
         	//fitting one batch from each task repeatedly until we cover all samples for the pretraining
-	        while (hasNext(fullIter)) {
+	        while (hasNext(preloadedIter)) {
 	        	for(int j= 0; j < nTasks; j++){
 	        		if(j==TASK)//do not train on the full data for the final task, since that will be cheating
 	        			continue;
-	        		if(!fullIter[j].hasNext())//skip task if we ran out of data
+	        		if(!preloadedIter[j].hasNext())//skip task if we ran out of data
 	        			continue;
 	        		if(j == 4 && parser.getMaskHiddenFeatures())//we can't train on discard task when the input is masked since there is no difference between the actions
 	        			continue;
-            		CatanDataSet d = fullIter[j].next();
+            		CatanDataSet d = preloadedIter[j].next();
             		DataSet ds = DataUtils.turnToSAPairsDS(d,metricW,labelW);
                 	if(NORMALISATION)
                 		norm.normalizeZeroMeanUnitVariance(ds);
             		model.fit(ds,d.getSizeOfLegalActionSet());//set the labels we want to fit to
             	}
             }
-            log.info("*** Completed pre-epoch {} ***", i);
+            log.info("*** Completed pretraining epoch {} ***", i);
             
-            log.info("Saving network parameters", i);
+            log.info("Saving initial network parameters", i);
             ModelUtils.saveMlpModelAndParameters(model, 6);//all tasks together are represented as task 6
             
             //out of curiosity... how much does this training aids to generalise to the task we are really training?
             log.info("Evaluate model on training data for final task..");
             preEval = new CatanEvaluation(maxActions[TASK]);
             preAgfe = new ActionGuessFeaturesEvaluation(actInputSize-1);//get rid of the bias
-            fullIter[TASK].reset();
-            while (fullIter[TASK].hasNext()) {
-            	CatanDataSet d = fullIter[TASK].next(1);
+            preloadedIter[TASK].reset();
+            while (preloadedIter[TASK].hasNext()) {
+            	CatanDataSet d = preloadedIter[TASK].next(1);
             	DataSet ds = DataUtils.turnToSAPairsDS(d,metricW,labelW);
             	if(NORMALISATION)
             		norm.normalizeZeroMeanUnitVariance(ds);
@@ -166,7 +170,6 @@ public class CVMlpTransferTest {
 	            preEval.eval(DataUtils.computeLabels(d), preOutput.transposei());
 	            preAgfe.eval(d.getTargetAction(), d.getActionFeatures().getRow(Nd4j.getBlasWrapper().iamax(preOutput)));
             }
-            fullIter[TASK].reset();
             //once finished just output the result
             System.out.println(preEval.stats());
             prePlotter.addData(preEval.score(), preEval.score(), preEval.accuracy(), preEval.accuracy());
@@ -175,7 +178,7 @@ public class CVMlpTransferTest {
             
             //reset iterators for future
             for(int j= 0; j < nTasks; j++){
-            	fullIter[j].reset();
+            	preloadedIter[j].reset();
             }
             
         }
@@ -190,101 +193,54 @@ public class CVMlpTransferTest {
         }
         
         //start training on the actual task now
-        log.info("Initialise cross-validation....");
-        CrossValidationUtils cv = new CrossValidationUtils(fullIter[TASK], FOLDS, nSamples);
-        
-        CatanPlotter[] plotter = new CatanPlotter[FOLDS];
-        
-        for(int k = 0; k < FOLDS; k++){
-        	log.info("Starting fold " + k);
-        	cv.setCurrentFold(k);
-        	PreloadedCatanDataSetIterator trainIter = cv.getTrainIterator();
-        	PreloadedCatanDataSetIterator testIter = cv.getTestIterator();
-        
-	        log.info("Build model....");
-	        //remove the biases, since dl4j adds it's own and the iterator removes the bias from the data
-	        CatanMlpConfig netConfig = new CatanMlpConfig(numInputs + actInputSize - 2, 1, seed, iterations, WeightInit.XAVIER, Updater.RMSPROP, learningRate, LossFunction.MCXENT, OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT);
-	        CatanMlp network = netConfig.init();
-	        network.setParams(model.params());//use the pretrained parameters
-        	
-	        plotter[k] = new CatanPlotter(parser.getTask());
-	        CatanEvaluation eval;
-	        CatanEvaluation tEval;
-	        ActionGuessFeaturesEvaluation tagfe;
-	        ActionGuessFeaturesEvaluation agfe;
-	        
-	        INDArray output;
-	        log.info("Train/evaluate model on fold " + k);
-	        for( int i=0; i<epochs; i++ ) {
-	        	while(trainIter.hasNext()){
-	        		CatanDataSet d = trainIter.next();
-	        		DataSet ds = DataUtils.turnToSAPairsDS(d,metricW,labelW);
-	            	if(NORMALISATION)
-	            		norm.normalizeZeroMeanUnitVariance(ds);
-	        		network.fit(ds,d.getSizeOfLegalActionSet());//set the labels we want to fit to
-	        	}
-	        	trainIter.reset();
-	            log.info("*** Completed epoch {} ***", i);
-	            
-	            log.info("Evaluate model on evaluation set....");
-	            eval = new CatanEvaluation(maxActions[TASK]);
-	            agfe = new ActionGuessFeaturesEvaluation(actInputSize-1);//get rid of the bias
-	            while (testIter.hasNext()) {
-	            	CatanDataSet d = testIter.next();
-	            	DataSet ds = DataUtils.turnToSAPairsDS(d,metricW,labelW);
-	            	if(NORMALISATION)
-	            		norm.normalizeZeroMeanUnitVariance(ds);
-	            	output = network.output(ds, d.getSizeOfLegalActionSet());
-		            eval.eval(DataUtils.computeLabels(d), output.transposei());
-		            agfe.eval(d.getTargetAction(), d.getActionFeatures().getRow(Nd4j.getBlasWrapper().iamax(output)));
-	            }
-	            testIter.reset();
-	            //once finished just output the result
-	            System.out.println(eval.stats());
-	            System.out.println("Feature confusion: " + Arrays.toString(agfe.getStats()));
-	            
-	            log.info("Evaluate model on training set....");
-	            tEval = new CatanEvaluation(maxActions[TASK]);
-	            tagfe = new ActionGuessFeaturesEvaluation(actInputSize-1);//get rid of the bias
-	            while (trainIter.hasNext()) {
-	            	CatanDataSet d = trainIter.next(1);
-	            	DataSet ds = DataUtils.turnToSAPairsDS(d,metricW,labelW);
-	            	if(NORMALISATION)
-	            		norm.normalizeZeroMeanUnitVariance(ds);
-	            	output = network.output(ds, d.getSizeOfLegalActionSet());
-		            tEval.eval(DataUtils.computeLabels(d), output.transposei());
-		            tagfe.eval(d.getTargetAction(), d.getActionFeatures().getRow(Nd4j.getBlasWrapper().iamax(output)));
-	            }
-	            trainIter.reset();
-	            //once finished just output the result
-	            System.out.println(tEval.stats());
-	            System.out.println("Feature confusion: " + Arrays.toString(tagfe.getStats()));
-	            plotter[k].addData(eval.score(), tEval.score(), eval.accuracy(), tEval.accuracy());
-	            plotter[k].addRanks(tEval.getRank(), eval.getRank());
-	            plotter[k].addFeatureConfusion(agfe.getStats(), tagfe.getStats());
-	        }
-	        
-            //write current results and move files so these won't be overwritten
-	        plotter[k].writeAll();
-            dirFrom = new File(CatanPlotter.RESULTS_DIR);
-            files = dirFrom.listFiles();
-            dirTo = new File("" + k);
-            dirTo.mkdirs();
-            for(File f : files){
-            	FileUtils.moveFileToDirectory(f, dirTo, false);
+        log.info("Build model using pretrained parameters....");
+        //remove the biases, since dl4j adds it's own and the iterator removes the bias from the data
+        CatanMlpConfig netConfig = new CatanMlpConfig(numInputs + actInputSize - 2, 1, seed, iterations, WeightInit.XAVIER, Updater.RMSPROP, learningRate, LossFunction.MCXENT, OptimizationAlgorithm.STOCHASTIC_GRADIENT_DESCENT);
+        CatanMlp network = netConfig.init();
+        network.setParams(model.params());
+    	
+        CatanEvaluation tEval;
+        ActionGuessFeaturesEvaluation tagfe;
+        CatanPlotter plotter = new CatanPlotter(TASK);
+        INDArray output;
+        for( int i=0; i<epochs; i++ ) {
+        	while(preloadedIter[TASK].hasNext()){
+        		CatanDataSet d = preloadedIter[TASK].next();
+        		DataSet ds = DataUtils.turnToSAPairsDS(d,metricW,labelW);
+            	if(NORMALISATION)
+            		norm.normalizeZeroMeanUnitVariance(ds);
+        		network.fit(ds,d.getSizeOfLegalActionSet());//set the labels we want to fit to
+        	}
+        	preloadedIter[TASK].reset();
+            log.info("*** Completed epoch {} ***", i);
+            
+            log.info("Saving network parameters");
+            ModelUtils.saveMlpModelAndParameters(network, TASK);
+            
+            log.info("Evaluate model on training set....");
+            tEval = new CatanEvaluation(maxActions[TASK]);
+            tagfe = new ActionGuessFeaturesEvaluation(actInputSize-1);//get rid of the bias
+            while (preloadedIter[TASK].hasNext()) {
+            	CatanDataSet d = preloadedIter[TASK].next(1);
+            	DataSet ds = DataUtils.turnToSAPairsDS(d,metricW,labelW);
+            	if(NORMALISATION)
+            		norm.normalizeZeroMeanUnitVariance(ds);
+            	output = network.output(ds, d.getSizeOfLegalActionSet());
+	            tEval.eval(DataUtils.computeLabels(d), output.transposei());
+	            tagfe.eval(d.getTargetAction(), d.getActionFeatures().getRow(Nd4j.getBlasWrapper().iamax(output)));
             }
-	        
+            preloadedIter[TASK].reset();
+            //once finished just output the result
+            System.out.println(tEval.stats());
+            System.out.println("Feature confusion: " + Arrays.toString(tagfe.getStats()));
+            plotter.addData(0, tEval.score(), 0, tEval.accuracy());
+            plotter.addRanks(tEval.getRank(), tEval.getRank());
+            plotter.addFeatureConfusion(tagfe.getStats(), tagfe.getStats());
+            plotter.writeAll();
         }
-        cv.writeResults(plotter, TASK);
-        
     }  
 	
-	/**
-	 * 
-	 * @param fullIter
-	 * @return true if any of the tasks contain more training data
-	 */
-	private static boolean hasNext(CatanDataSetIterator[] fullIter){
+	private static boolean hasNext(PreloadedCatanDataSetIterator[] fullIter){
         for(int j= 0; j < nTasks; j++){
     		if(j == 4 && parser.getMaskHiddenFeatures())
     			continue;
@@ -293,5 +249,4 @@ public class CVMlpTransferTest {
         }
 		return false;	
 	}
-	
 }

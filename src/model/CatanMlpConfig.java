@@ -43,6 +43,9 @@ public class CatanMlpConfig{
         this.optAlg = oa;
     }
 
+    /**
+     * @return a new mlp model
+     */
     public CatanMlp init() {
         conf = new NeuralNetConfiguration.Builder()
                 .seed(seed)

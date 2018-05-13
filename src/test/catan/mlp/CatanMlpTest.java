@@ -4,6 +4,7 @@ import java.io.File;
 import java.util.Scanner;
 
 import model.CatanMlpConfig;
+import util.CatanFeatureMaskingUtil;
 import util.DataUtils;
 import util.ModelUtils;
 import util.NNConfigParser;
@@ -77,11 +78,16 @@ public class CatanMlpTest {
         long seed = 123;
        
         //data iterator
-        CatanDataSetIterator trainIter = new CatanDataSetIterator(trainData,nSamples,miniBatchSize,numInputs+1,numInputs+actInputSize+1,true);
-        Normaliser norm = new Normaliser(PATH + DATA_TYPE);
+        CatanDataSetIterator trainIter = new CatanDataSetIterator(trainData,nSamples,miniBatchSize,numInputs+1,numInputs+actInputSize+1,true, parser.getMaskHiddenFeatures());
+        Normaliser norm = new Normaliser(PATH + DATA_TYPE, parser.getMaskHiddenFeatures());
         if(NORMALISATION){
         	log.info("Check normalisation parameters for dataset ....");
         	norm.init(trainIter, TASK);
+        }
+        //if the input is masked/postprocessed update the input size for the model creation
+        if(parser.getMaskHiddenFeatures()) {
+        	numInputs -= CatanFeatureMaskingUtil.droppedFeaturesCount;
+        	actInputSize -= CatanFeatureMaskingUtil.droppedFeaturesCount;
         }
         
         //and remove the bias count, since dl4j adds it's own and the iterator removes the bias from the data
@@ -111,7 +117,7 @@ public class CatanMlpTest {
         int maxActions = Integer.parseInt(testScanner.nextLine().split(METADATA_SEPARATOR)[1]);
         testScanner.close();
         //use 10k unseen samples to evaluate (equal to all samples for human data) 
-        CatanDataSetIterator testIter = new CatanDataSetIterator(testData,10000,1,numInputs+1,numInputs+actInputSize+1,true);
+        CatanDataSetIterator testIter = new CatanDataSetIterator(testData,10000,1,numInputs+1,numInputs+actInputSize+1,true,parser.getMaskHiddenFeatures());
         
         CatanPlotter plotter = new CatanPlotter(parser.getTask());
         CatanEvaluation eval = new CatanEvaluation(maxActions);

@@ -26,6 +26,7 @@ public class NNConfigParser {
 	private String path;
 	private int samples;
 	private boolean normalisation;
+	private boolean maskHiddenFeatures;
 	
 	public void parseConfig(String filePath){
 		double[] params = new double[5];
@@ -87,6 +88,9 @@ public class NNConfigParser {
 	            }else if (nextLine.startsWith("PreTrainEpochs")) {
 	                String p[] = nextLine.split("=");
 	                preTrainEpochs = Integer.parseInt(p[1]);
+	            }else if (nextLine.startsWith("MaskHiddenFeatures")) {
+	                String p[] = nextLine.split("=");
+	                maskHiddenFeatures = Boolean.parseBoolean(p[1]);
 	            }
 	            else{
 	            	throw new RuntimeException("Cannot read configuration: unknown parameter");
@@ -151,6 +155,9 @@ public class NNConfigParser {
 	public int getPreTrainEpochs() {
 		return preTrainEpochs;
 	}
-
+	
+	public boolean getMaskHiddenFeatures() {
+		return maskHiddenFeatures;
+	}
 	
 }

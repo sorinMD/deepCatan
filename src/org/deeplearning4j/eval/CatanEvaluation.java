@@ -118,6 +118,10 @@ public class CatanEvaluation implements Serializable {
         return correct / getNumRowCounter();
     }
     
+    public double correct(){
+    	return correct;
+    }
+    
     public double score(){
     	return score / getNumRowCounter();
     }

@@ -61,7 +61,7 @@ public class FrequencyBased {
         scanner.close();
         
         //data iterator
-        CatanDataSetIterator trainIter = new CatanDataSetIterator(trainData,nSamples,1,numInputs+1,numInputs+actInputSize+1,true);
+        CatanDataSetIterator trainIter = new CatanDataSetIterator(trainData,nSamples,1,numInputs+1,numInputs+actInputSize+1,true,parser.getMaskHiddenFeatures());
         
 //        //read all data for training into a datastructure
 //        ArrayList<CatanDataSet> train = new ArrayList<>(nSamples);
@@ -84,7 +84,7 @@ public class FrequencyBased {
         int maxActions = Integer.parseInt(testScanner.nextLine().split(METADATA_SEPARATOR)[1]);
         testScanner.close();
         //use 10k unseen samples to evaluate (equal to all samples for human data) 
-        CatanDataSetIterator testIter = new CatanDataSetIterator(testData,10000,1,numInputs+1,numInputs+actInputSize+1,true);
+        CatanDataSetIterator testIter = new CatanDataSetIterator(testData,10000,1,numInputs+1,numInputs+actInputSize+1,true,parser.getMaskHiddenFeatures());
         
 //        //read all data for evaluation into a datastructure
 //        ArrayList<CatanDataSet> evalData = new ArrayList<>(nSamples);

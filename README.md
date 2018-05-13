@@ -28,6 +28,17 @@ Configuration is set in the training_config.txt file (the values given in the pr
 - Normalisation=true/false (0 mean and unit variance normalisation)
 - PreTrainEpochs=(number of epochs to pre-train when doing transfer learning) 
 
-Note: Extract the data archive that can be found in data folder and provide the path to the extracted data before running any of the experiments. The data is shuffled and grouped based on tasks. Normalisation parameters (means and standard deviation) are also already computed and stored in the corresponding folders. The format of the data is given in utils.NumericalFeatureVectorOffsets.java. The code that used for generating/collecting the data will be released with the code for the STAC project (https://www.irit.fr/STAC/). 
+Note: Extract the data archive that can be found in data folder and provide the path to the extracted data before running any of the experiments. The data is shuffled and grouped based on tasks. Normalisation parameters (means and standard deviation) are also already computed and stored in the corresponding folders. The format of the data is given in utils.NumericalFeatureVectorOffsets.java. The code that was used for generating/collecting the data is released with the code for the STAC project (https://www.irit.fr/STAC/) at: https://github.com/sorinMD/StacSettlers.git .
 
 Python script plot.py can be used to plot and vizualise the results.
+
+
+**Latest version** includes several new classes used to run experiments for the following PhD thesis: 
+- Mihai Dobre, Low-resource Learning in Complex Games, School of Informatics, University of Edinburgh, 2018.
+
+New configuration for training models on masked input such that these will represent opponent models in the partially observable setting:
+- MaskHiddenFeatures=false/false (removes features describing resources or development cards for the current player that opponents cannot see)
+
+New baseline model that performs a binary classification task on the data; the train/test classes are in the test.catan.logistic package.
+
+New classes for training the best models on the human data in the new package test.seeding (N.B.: the correct configuration should be discovered via cross-validation beforehand). The StacSettlers repo contains the code for combining these models with MCTS.

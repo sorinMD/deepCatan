@@ -20,6 +20,8 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
 
+import util.CatanFeatureMaskingUtil;
+
 /**
  * Simple data iterator that reads the data from a given file and turns it into
  * a CatanDataSet data structure.
@@ -40,7 +42,12 @@ public class CatanDataSetIterator {
     private int index = 0;
     private int nSamples;
     private boolean stackedActions = true;
-       
+    /**
+     * Option to account for the fact that the game is partially-observable and mask the features that could not be observed.
+     */
+    private boolean maskHiddenFeatures;
+    
+    
    /**
     * 
     * @param recordReader
@@ -49,7 +56,7 @@ public class CatanDataSetIterator {
     * @param actionlabelIndex
     * @param legalActionsIndex
     */
-   public CatanDataSetIterator(File f, int nSamples, int batchSize, int actionlabelIndex, int legalActionsIndex, boolean sa) {
+   public CatanDataSetIterator(File f, int nSamples, int batchSize, int actionlabelIndex, int legalActionsIndex, boolean sa, boolean maskHiddenFeatures) {
        file = f;
 	   recordReader = new CSVRecordReader();
        try {
@@ -64,6 +71,7 @@ public class CatanDataSetIterator {
        this.legalActionsIndex = legalActionsIndex;
        this.nSamples = nSamples;
        this.stackedActions = sa;
+       this.maskHiddenFeatures = maskHiddenFeatures;
    }
    
    /**
@@ -74,13 +82,14 @@ public class CatanDataSetIterator {
     * @param actionlabelIndex
     * @param legalActionsIndex
     */
-   public CatanDataSetIterator(RecordReader recordReader, int nSamples, int batchSize, int actionlabelIndex, int legalActionsIndex, boolean sa) {
+   public CatanDataSetIterator(RecordReader recordReader, int nSamples, int batchSize, int actionlabelIndex, int legalActionsIndex, boolean sa, boolean maskHiddenFeatures) {
        this.recordReader = recordReader;
        this.batchSize = batchSize;
        this.actionLabelIndex = actionlabelIndex;
        this.legalActionsIndex = legalActionsIndex;
        this.nSamples = nSamples;
        this.stackedActions = sa;
+       this.maskHiddenFeatures = maskHiddenFeatures;
    }
    
    public CatanDataSet next(int num) {
@@ -106,7 +115,18 @@ public class CatanDataSetIterator {
        }
        
        if(dataSets.size()==1){
-    	  return dataSets.get(0);
+    	   //the single sample input case
+    	   if(maskHiddenFeatures) {
+			   INDArray stateInput = dataSets.get(0).getStateFeatures();
+		       INDArray actionInput = dataSets.get(0).getActionFeatures();
+		       INDArray label = dataSets.get(0).getTargetAction();
+		       stateInput = CatanFeatureMaskingUtil.maskState(stateInput);
+		       actionInput = CatanFeatureMaskingUtil.maskAction(actionInput);
+		       label = CatanFeatureMaskingUtil.maskAction(label);
+		       return new CatanDataSet(stateInput, actionInput, label, dataSets.get(0).getSizeOfLegalActionSet());
+    	   }
+           
+    	   return dataSets.get(0);
        }
        
        //there is no better way of computing the action rows
@@ -132,6 +152,12 @@ public class CatanDataSetIterator {
     		   actIdx++;
     	   }
        }
+       
+	   if(maskHiddenFeatures) {
+	       stateInput = CatanFeatureMaskingUtil.maskState(stateInput);
+	       actionInput = CatanFeatureMaskingUtil.maskAction(actionInput);
+	       label = CatanFeatureMaskingUtil.maskAction(label);
+	   }
        
        CatanDataSet ret = new CatanDataSet(stateInput, actionInput, label, actionSetSize);
        last = ret;

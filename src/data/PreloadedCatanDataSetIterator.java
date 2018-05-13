@@ -3,6 +3,7 @@ package data;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.math3.exception.OutOfRangeException;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.dataset.DataSet;
 import org.nd4j.linalg.factory.Nd4j;
@@ -76,6 +77,14 @@ public class PreloadedCatanDataSetIterator{
 		CatanDataSet ret = new CatanDataSet(stateInput, actionInput, label, actionSetSize);
 		return ret;
 	}
+	
+	public CatanDataSet getSample(int index) {
+		if(index >= totalExamples())
+			throw new OutOfRangeException(index,0,totalExamples()-1);
+		
+		return data.get(index);	
+	}
+	
 	
 	public int totalExamples() {
 		return data.size();

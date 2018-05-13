@@ -24,6 +24,7 @@ import data.Normaliser;
 import data.PreloadedCatanDataSetIterator;
 import model.CatanMlpConfig;
 import util.CrossValidationUtils;
+import util.CatanFeatureMaskingUtil;
 import util.DataUtils;
 import util.ModelUtils;
 import util.NNConfigParser;
@@ -104,13 +105,20 @@ public class CVMlpTransfer1to1Test {
         //data iterators
         log.info("Generate the iterators for the two tasks only.");
         CatanDataSetIterator[] fullIter = new CatanDataSetIterator[2];
-        fullIter[0] = new CatanDataSetIterator(data[0],nSamples,miniBatchSize,numInputs+1,numInputs+actInputSize+1,true);
-        fullIter[1] = new CatanDataSetIterator(data[1],nSamples,miniBatchSize,numInputs+1,numInputs+actInputSize+1,true);
+        fullIter[0] = new CatanDataSetIterator(data[0],nSamples,miniBatchSize,numInputs+1,numInputs+actInputSize+1,true,parser.getMaskHiddenFeatures());
+        fullIter[1] = new CatanDataSetIterator(data[1],nSamples,miniBatchSize,numInputs+1,numInputs+actInputSize+1,true,parser.getMaskHiddenFeatures());
         
-        Normaliser norm = new Normaliser(PATH + DATA_TYPE);
+        //TODO: Should we normalise over the whole data or just on this particular task that we want to handle or just the task used for pretraining
+        Normaliser norm = new Normaliser(PATH + DATA_TYPE,parser.getMaskHiddenFeatures());
         if(NORMALISATION){
         	log.info("Check normalisation parameters for dataset ....");
         	norm.init(fullIter,TASK,PRETASK);
+        }
+        
+        //if the input is masked/postprocessed update the input size for the models creation
+        if(parser.getMaskHiddenFeatures()) {
+        	numInputs -= CatanFeatureMaskingUtil.droppedFeaturesCount;
+        	actInputSize -= CatanFeatureMaskingUtil.droppedFeaturesCount;
         }
         
         //train over the task chosen for pre-training
